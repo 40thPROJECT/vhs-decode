@@ -2612,6 +2612,23 @@ class Field:
            and scale input samples to output samples
         """
         actual_linelocs = np.array(self.linelocs, dtype=np.float64)
+
+        # downscale() runs two or three times per field (luma, chroma burst,
+        # chroma) and the spline below only depends on the line locations and the
+        # field geometry, so re-fitting and re-evaluating it every time is pure
+        # duplicated work.  linelocs does get refined mid-field, hence comparing
+        # contents rather than just caching once.
+        cache_key = (self.inlinelen, self.outlinelen, self.outlinecount, self.lineoffset)
+        cached = getattr(self, "_wow_cache", None)
+        if (
+            cached is not None
+            and cached[0] == cache_key
+            and cached[1].shape == actual_linelocs.shape
+            and np.array_equal(cached[1], actual_linelocs)
+        ):
+            self.interpolated_pixel_locs, self.wowfactors = cached[2], cached[3]
+            return self.interpolated_pixel_locs, self.wowfactors
+
         expected_linelocs = np.array([i * self.inlinelen for i in range(len(actual_linelocs))], dtype=np.float64)
 
         outscale = self.inlinelen / self.outlinelen
@@ -2638,6 +2655,13 @@ class Field:
         self.interpolated_pixel_locs = spl(scaled_pixel_locs)
         # amount of wow for each scaled pixel
         self.wowfactors = spl(scaled_pixel_locs, 1)
+
+        self._wow_cache = (
+            cache_key,
+            actual_linelocs,
+            self.interpolated_pixel_locs,
+            self.wowfactors,
+        )
 
         return self.interpolated_pixel_locs, self.wowfactors
 
