@@ -43,8 +43,19 @@ def check_levels(data, old_sync, new_sync, new_blank, vsync_hz_ref, hz_ire, full
         return True
 
     if full:
-        amount_below = len(np.argwhere(data < new_sync)) / len(data)
-        amount_below_half_sync = len(np.argwhere(data < new_blank)) / len(data)
+        # Counting in a single pass: np.argwhere built two index arrays over the
+        # whole field's demod_05 on every call, and this runs a few times per field.
+        below_sync = 0
+        below_blank = 0
+        for i in range(len(data)):
+            value = data[i]
+            if value < new_sync:
+                below_sync += 1
+            if value < new_blank:
+                below_blank += 1
+
+        amount_below = below_sync / len(data)
+        amount_below_half_sync = below_blank / len(data)
 
         # If there is a lot of data below the detected vsync level, or almost no data below the detected
         # 50% of hsync level it's likely the levels are not correct, so avoid adjusting.

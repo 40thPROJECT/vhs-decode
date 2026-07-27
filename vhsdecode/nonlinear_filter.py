@@ -1,4 +1,4 @@
-import numpy.fft as npfft
+import scipy.fft as npfft
 
 import scipy.signal as sps
 import numpy as np
