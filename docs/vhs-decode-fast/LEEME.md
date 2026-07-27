@@ -100,8 +100,8 @@ llegó al mismo sitio: `check_levels` en una pasada, un fallback en Python para 
 módulo Rust, y una guarda sobre la división por cero de `_sync_to_burst`. Tenían
 sentido contra la base del 16 de julio y ahora son redundantes. El cambio de
 `numpy.fft` a `scipy.fft` iba en el mismo commit que `check_levels` y se fue con
-él; el original sigue usando `numpy.fft` en `process.py`, así que ese conviene
-recuperarlo.
+él, pero el original sigue importando `numpy.fft`, así que esa mitad se ha
+repuesto por separado.
 
 ## Búsqueda dentro de un .ldf
 

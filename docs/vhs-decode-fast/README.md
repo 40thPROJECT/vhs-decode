@@ -96,8 +96,8 @@ Three changes that were in this fork are gone, because upstream arrived at the
 same place: a single-pass `check_levels`, a Python fallback for the Rust
 extension, and a guard on the divide-by-zero in `_sync_to_burst`. They were worth
 having against the 16 July base and are redundant now. `scipy.fft` in place of
-`numpy.fft` was part of the same commit as `check_levels` and went with it;
-upstream still uses `numpy.fft` in `process.py`, so that one is worth revisiting.
+`numpy.fft` was part of the same commit as `check_levels` and went with it, but
+upstream still imports `numpy.fft`, so that half was restored on its own.
 
 ## Seeking inside a .ldf
 
