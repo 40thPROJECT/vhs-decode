@@ -1,4 +1,4 @@
-# vhs-decode — faster decoding
+# vhs-decode-fast
 
 A fork of [oyvindln/vhs-decode](https://github.com/oyvindln/vhs-decode) aimed at
 one problem: **a full VHS tape takes a very long time to decode, and `--threads`
@@ -135,7 +135,7 @@ decoder already produces inside a continuous decode.
 
 ## Detailed write-up
 
-[docs/faster-decoding/README.md](docs/faster-decoding/README.md) — the reasoning
+[docs/vhs-decode-fast/README.md](docs/vhs-decode-fast/README.md) — the reasoning
 behind each change, what was tried and abandoned, and why `--threads` plateaus.
 
 ---
@@ -276,7 +276,7 @@ decodificador ya produce dentro de un decode continuo.
 
 ## Documentación detallada
 
-[docs/faster-decoding/LEEME.md](docs/faster-decoding/LEEME.md) — el razonamiento
+[docs/vhs-decode-fast/LEEME.md](docs/vhs-decode-fast/LEEME.md) — el razonamiento
 detrás de cada cambio, lo que se probó y se descartó, y por qué `--threads` se
 estanca.
 
