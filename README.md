@@ -84,6 +84,40 @@ machine brings its own cores and memory bandwidth.
 Keep the `.parts.json` manifest. Without it there is no way to know where each
 decode belongs or how much overlap to trim.
 
+### `insert_tbc.py` — fill a gap in a finished decode
+
+```bash
+python insert_tbc.py --into tape.tbc --insert gap.tbc
+```
+
+If one job stops early, its stretch of tape is missing from the middle of the
+merged output. Decode that stretch again and this drops it into the hole.
+
+It works in place, extending the file and shifting the tail along, so the only
+extra space needed is the size of the insert — splitting the file and re-merging
+would need room for a second copy of the whole decode. Overrun on both sides is
+trimmed and field parity is repaired at both new joins. Use `--dry-run` first.
+
+## When a job stops early
+
+A decoder that hits an unhandled error prints it, saves what it has and **exits
+0**, so from the outside the job looks like it finished normally. On a real
+2h45m tape one job died 21 minutes into its 55-minute span and 34 minutes of
+tape went missing, with nothing to show for it but a warning buried in the merge
+hours later.
+
+Two changes came out of that:
+
+* `decode_parallel.py` now checks what each job actually covered against what it
+  was asked to decode, and says so as soon as the jobs finish.
+* The crash itself was a divide-by-zero in upstream's NTSC burst sync
+  (`_sync_to_burst`) on a degenerate field. One bad field on a noisy tape now
+  costs that field rather than the rest of the capture.
+
+Worth noting: a single-process decode would have stopped at the same field and
+lost everything after it — 88 minutes instead of 34. Splitting the work
+contained the damage.
+
 ## Requirements and caveats
 
 * **Use a built checkout.** The compiled Cython extensions and the Rust module
@@ -196,6 +230,41 @@ cada máquina aporta sus propios núcleos y su propio ancho de banda de memoria.
 
 Guarda el manifiesto `.parts.json`. Sin él no hay forma de saber dónde va cada
 decode ni cuánto solape recortar.
+
+### `insert_tbc.py` — rellenar un hueco en un decode ya terminado
+
+```bash
+python insert_tbc.py --into cinta.tbc --insert hueco.tbc
+```
+
+Si un trabajo se para antes de tiempo, su tramo de cinta falta en mitad del
+resultado unido. Decodificas ese tramo otra vez y esto lo mete en el hueco.
+
+Trabaja **en el propio fichero**, alargándolo y desplazando la cola, así que solo
+necesita el espacio del trozo que inserta — partir el fichero y volver a unir
+haría falta sitio para una segunda copia del decode entero. Recorta el sobrante
+de ambos lados y repara la paridad de campo en las dos uniones nuevas. Usa
+`--dry-run` antes.
+
+## Cuando un trabajo se para antes de tiempo
+
+Un decodificador que se topa con un error no controlado lo imprime, guarda lo que
+lleva y **sale con código 0**, así que desde fuera parece que terminó
+normalmente. En una cinta real de 2 h 45 un trabajo murió a los 21 minutos de su
+tramo de 55, y se perdieron 34 minutos de cinta sin más señal que un aviso
+enterrado en la unión, horas después.
+
+De ahí salieron dos cambios:
+
+* `decode_parallel.py` comprueba ahora lo que cubrió realmente cada trabajo
+  frente a lo que se le pidió, y te lo dice en cuanto terminan.
+* El crash en sí era una división por cero en el sincronismo de burst NTSC del
+  original (`_sync_to_burst`) ante un campo degenerado. Ahora un campo malo en
+  una cinta ruidosa cuesta ese campo, no el resto de la captura.
+
+Merece la pena señalarlo: un decode de un solo proceso se habría parado en ese
+mismo campo y habría perdido todo lo posterior — 88 minutos en vez de 34.
+Repartir el trabajo contuvo el daño.
 
 ## Requisitos y advertencias
 

@@ -297,6 +297,61 @@ than the decoders' output, which is block-buffered and lags by a hundred frames.
 Keep the `.parts.json` manifest — without it there is no way to know where each
 decode belongs or how much overlap to trim.
 
+## When a job stops early
+
+A decoder that hits an unhandled error prints it, saves what it has and **exits
+0**.  From the outside the job looks like it finished normally, so the driver
+reported "job 1 finished" and carried on.
+
+On a real 2h45m tape that happened 21 minutes into a 55-minute span, and **34
+minutes of tape went missing** from the middle of the output.  The only signal
+was a gap warning during the merge, hours later.
+
+The crash was a divide by zero in upstream's NTSC burst sync,
+`vhsdecode/field.py:_sync_to_burst`:
+
+```python
+scale = burst_center_distance / (outlinelen * (burst_center_distance / line_length))
+```
+
+`line_length` is zero when two consecutive line locations coincide - a degenerate
+field, which a noisy tape produces sooner or later.  The exception propagates out
+of `Field.process()` and ends the decode.
+
+Both divisions cancel: the expression is `line_length / outlinelen`.  It is left
+as written so the numbers do not shift where it already worked, with a guard that
+skips a line carrying no usable timing.  One bad field now costs that field
+rather than the rest of the capture.
+
+Separately, `decode_parallel.py` now compares what each job covered against what
+it was asked to decode and says so as soon as the jobs finish, instead of leaving
+it to surface at merge time or not at all.
+
+Worth recording: a single-process decode would have stopped at the same field and
+lost everything after it - 88 minutes instead of 34.  Splitting the work
+contained the damage, which is a benefit of parallel decoding that has nothing to
+do with speed.
+
+## Filling a gap afterwards
+
+`insert_tbc.py` drops a re-decode of the missing stretch into the hole:
+
+```bash
+python insert_tbc.py --into tape.tbc --insert gap.tbc
+```
+
+The piece belongs *inside* the file, which `merge_tbc.py` cannot do - it joins
+pieces end to end.  Splitting the file and re-merging would need room for a
+second copy of the whole decode, hundreds of gigabytes for a full tape.
+
+Instead the file is extended by the size of the insert and the tail is shifted
+along, backwards from its end so nothing is overwritten before it has been
+copied.  The only extra space needed is the insert itself.  Overrun on both sides
+is trimmed by `fileLoc` and field parity is repaired at both new joins.
+
+Metadata is written last: until then the file still matches its old index, so an
+interrupted run is recoverable.  `--dry-run` reports what would happen.
+
 ## What did not work
 
 **CUDA.** Batched FFTs on an RTX 3090 run about 15x faster than on the CPU, but

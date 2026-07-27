@@ -309,6 +309,64 @@ retrasa más de cien frames.
 Guarda el manifiesto `.parts.json` — sin él no hay forma de saber dónde va cada
 decode ni cuánto solape recortar.
 
+## Cuando un trabajo se para antes de tiempo
+
+Un decodificador que se topa con un error no controlado lo imprime, guarda lo que
+lleva y **sale con codigo 0**.  Desde fuera parece que termino normalmente, asi
+que el driver informo de "job 1 finished" y siguio adelante.
+
+En una cinta real de 2 h 45 eso ocurrio a los 21 minutos de un tramo de 55, y
+**se perdieron 34 minutos de cinta** de en medio del resultado.  La unica senal
+fue un aviso de hueco durante la union, horas despues.
+
+El fallo era una division por cero en el sincronismo de burst NTSC del original,
+`vhsdecode/field.py:_sync_to_burst`:
+
+```python
+scale = burst_center_distance / (outlinelen * (burst_center_distance / line_length))
+```
+
+`line_length` vale cero cuando dos posiciones de linea consecutivas coinciden - un
+campo degenerado, que una cinta ruidosa acaba produciendo.  La excepcion sale de
+`Field.process()` y termina la decodificacion.
+
+Las dos divisiones se cancelan: la expresion es `line_length / outlinelen`.  Se
+deja tal cual para que los numeros no cambien donde ya funcionaba, con una guarda
+que salta una linea sin informacion temporal utilizable.  Ahora un campo malo
+cuesta ese campo, no el resto de la captura.
+
+Aparte, `decode_parallel.py` compara ahora lo que cubrio cada trabajo con lo que
+se le pidio y lo dice en cuanto terminan, en vez de dejar que aparezca al unir o
+que no aparezca.
+
+Merece la pena dejarlo escrito: un decode de un solo proceso se habria parado en
+ese mismo campo y habria perdido todo lo posterior - 88 minutos en vez de 34.
+Repartir el trabajo contuvo el dano, y eso es una ventaja del decode paralelo que
+no tiene nada que ver con la velocidad.
+
+## Rellenar un hueco despues
+
+`insert_tbc.py` mete un nuevo decode del tramo que falta dentro del hueco:
+
+```bash
+python insert_tbc.py --into cinta.tbc --insert hueco.tbc
+```
+
+La pieza va *dentro* del fichero, y eso `merge_tbc.py` no lo sabe hacer: une
+piezas una detras de otra.  Partir el fichero y volver a unir necesitaria sitio
+para una segunda copia del decode entero, cientos de gigabytes en una cinta
+completa.
+
+En su lugar se alarga el fichero por el tamano del trozo insertado y se desplaza
+la cola, hacia atras desde su final para que nada se sobrescriba antes de haberse
+copiado.  El unico espacio extra necesario es el del propio trozo.  El sobrante
+de ambos lados se recorta por `fileLoc` y la paridad de campo se repara en las
+dos uniones nuevas.
+
+Los metadatos se escriben al final: hasta entonces el fichero sigue cuadrando con
+su indice anterior, asi que una ejecucion interrumpida es recuperable.
+`--dry-run` dice lo que haria sin tocar nada.
+
 ## Lo que no funcionó
 
 **CUDA.** Las FFT por lotes en una RTX 3090 van unas 15 veces más rápido que en
