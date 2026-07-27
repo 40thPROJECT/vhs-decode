@@ -11,7 +11,7 @@ import lddecode.core as ldd
 
 # from lddecode.core import npfft
 # Use numpy fft rather than scipy fft as is imported in lddecode core as it seems to be slightly faster.
-import numpy.fft as npfft
+import scipy.fft as npfft
 
 import lddecode.utils as lddu
 import vhsdecode.utils as utils
