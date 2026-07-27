@@ -638,6 +638,32 @@ def trim_parts(base, njobs, sample_freq_hz):
     return summary
 
 
+def check_coverage(base, njobs, bounds, sample_freq_hz, tolerance=0.9):
+    """Jobs whose output covers much less tape than they were asked to decode.
+
+    Returns [(job, seconds covered, seconds expected), ...] for the short ones.
+    """
+    short = []
+    for i in range(njobs):
+        paths = part_paths(base, i)
+        try:
+            with open(paths["json"]) as fh:
+                fields = json.load(fh).get("fields") or []
+        except (OSError, ValueError):
+            continue
+        if not fields:
+            short.append((i, 0.0, (bounds[i + 1] - bounds[i]) / sample_freq_hz))
+            continue
+        locs = [f["fileLoc"] for f in fields if "fileLoc" in f]
+        if not locs:
+            continue
+        covered = (locs[-1] - locs[0]) / sample_freq_hz
+        expected = (bounds[i + 1] - bounds[i]) / sample_freq_hz
+        if expected > 0 and covered < expected * tolerance:
+            short.append((i, covered, expected))
+    return short
+
+
 def split_files(rest):
     """The input file and output base name, which must be the last two arguments."""
     if len(rest) < 2:
@@ -779,6 +805,22 @@ def main(argv=None):
         return 1
 
     decode_time = time.time() - started
+
+    # A decoder that hits an unhandled error part-way through prints it, saves
+    # what it has and exits 0, so "the job finished" says nothing about whether
+    # it covered its span.  Say so here rather than letting it surface hours
+    # later as a gap warning during the merge, or not at all.
+    short = check_coverage(out_base, jobs, bounds, sample_freq_hz)
+    if short:
+        print("", file=sys.stderr)
+        for i, covered, expected in short:
+            print("WARNING: job %d covered only %s of its %s span - %s of tape is "
+                  "missing from the output.  Its decoder stopped early; the end of "
+                  "%s.log.driver usually says why."
+                  % (i, _hms(covered), _hms(expected), _hms(expected - covered),
+                     os.path.basename(part_paths(out_base, i)["base"])),
+                  file=sys.stderr)
+        print("", file=sys.stderr)
 
     if known.no_merge:
         summary = trim_parts(out_base, jobs, sample_freq_hz)
