@@ -484,6 +484,21 @@ def _get_upconverted_burst(
     filtered_padded = sosfiltfilt_rust(chroma_filter, upconverted_burst)
     filtered = filtered_padded[burst_filter_padding:-burst_filter_padding]
 
+    return _burst_info_from_filtered(
+        filtered,
+        burst_start,
+        burst_end,
+        burst_filter_padding,
+        burst_sin,
+        burst_cos,
+        line_number,
+        fsc,
+    )
+
+
+def _burst_info_from_filtered(
+    filtered, burst_start, burst_end, burst_filter_padding, burst_sin, burst_cos, line_number, fsc
+):
     burst_len = len(filtered)
     burst_results = _demod_burst(
         filtered, burst_start + burst_filter_padding, burst_len, burst_sin, burst_cos, fsc
@@ -495,6 +510,94 @@ def _get_upconverted_burst(
         burst_end,
         *burst_results
     )
+
+
+def _get_upconverted_burst_cached(
+    prefiltered,
+    chroma,
+    chroma_heterodyne,
+    chroma_filter,
+    current_phase,
+    burst_area,
+    burst_sin,
+    burst_cos,
+    line_number,
+    line_offset,
+    outwidth,
+    fsc,
+):
+    """Same result as `_get_upconverted_burst`, reusing the batched filter pass."""
+    filtered_all, starts, row_of = prefiltered
+    i = line_number - line_offset
+    row = row_of[i]
+
+    if row < 0:
+        # Window runs past the end of the buffer - filter this one on its own.
+        return _get_upconverted_burst(
+            chroma,
+            chroma_heterodyne,
+            chroma_filter,
+            current_phase,
+            burst_area,
+            burst_sin,
+            burst_cos,
+            line_number,
+            line_offset,
+            outwidth,
+            fsc,
+        )
+
+    burst_start = int(starts[i])
+    burst_end = min(len(chroma), burst_start + burst_area[0] + burst_area[1])
+
+    return _burst_info_from_filtered(
+        filtered_all[current_phase][row],
+        burst_start,
+        burst_end,
+        burst_area[0],
+        burst_sin,
+        burst_cos,
+        line_number,
+        fsc,
+    )
+
+
+def _prefilter_burst_windows(
+    chroma, chroma_heterodyne, chroma_filter, burst_area, line_offset, last_line, outwidth
+):
+    """Band-pass the up-converted burst window of every line, for every heterodyne
+    phase, as one batched filter call per phase.
+
+    `_get_upconverted_burst` used to run sosfiltfilt once per line (~800 calls per
+    field on ~50 sample slices), and every one of those re-derived the filter's
+    steady-state initial conditions from scratch - a handful of linalg.solve calls
+    each, which cost far more than filtering the samples.  sosfiltfilt pads and
+    filters each row of a 2-D array independently, so filtering all lines at once
+    produces the same rows for a fraction of the work.
+
+    Returns (filtered, starts, row_of): filtered[phase][row_of[i]] is the trimmed
+    burst of line i, starting at sample starts[i] of `chroma`.  row_of[i] is -1 for
+    lines whose window runs past the end of the buffer; those keep the per-line path.
+    """
+    pad = burst_area[0]
+    width = burst_area[0] + burst_area[1]
+    n_lines = last_line - line_offset
+
+    starts = np.arange(n_lines) * outwidth
+    full = starts + width <= len(chroma)
+
+    row_of = np.full(n_lines, -1, dtype=np.intp)
+    row_of[full] = np.arange(np.count_nonzero(full))
+
+    idx = starts[full][:, None] + np.arange(width)[None, :]
+
+    filtered = [
+        sps.sosfiltfilt(chroma_filter, het[idx] * chroma[idx], axis=-1)[:, pad:-pad]
+        for het in chroma_heterodyne
+    ]
+
+    return filtered, starts, row_of
+
 
 def _get_phase_sequence(
     chroma,
@@ -552,6 +655,10 @@ def _get_phase_sequence(
           Possibly a 2D aware detection could be used to determine where the color phase is rotated +-90 degrees relative to the lines above and below
     """
 
+    prefiltered = _prefilter_burst_windows(
+        chroma, chroma_heterodyne, chroma_filter, burstarea, lineoffset, last_line, outwidth
+    )
+
     current_phase = 0
     use_next_phase = False
     for linenumber in range(lineoffset, last_line):
@@ -563,7 +670,8 @@ def _get_phase_sequence(
             use_next_phase = False
         else:
             current_phase = (current_phase + track_rotation) % 4
-            current_burst = _get_upconverted_burst(
+            current_burst = _get_upconverted_burst_cached(
+                prefiltered,
                 chroma,
                 chroma_heterodyne,
                 chroma_filter,
@@ -585,7 +693,8 @@ def _get_phase_sequence(
         ):
             # get the next burst using the phase rotation for the current track
             next_phase = (current_phase + track_rotation) % 4
-            next_burst = _get_upconverted_burst(
+            next_burst = _get_upconverted_burst_cached(
+                prefiltered,
                 chroma,
                 chroma_heterodyne,
                 chroma_filter,
