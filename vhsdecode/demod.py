@@ -1,7 +1,13 @@
 from numba import njit
 import numpy as np
 
-import vhsd_rust
+try:
+    import vhsd_rust
+
+    _unwrap_hilbert_impl = vhsd_rust.unwrap_hilbert
+except ModuleNotFoundError:
+    # No cargo toolchain / rust extension built - use the numba equivalent.
+    from vhsdecode.rust_fallback import unwrap_hilbert as _unwrap_hilbert_impl
 
 
 @njit(cache=True, nogil=True)
@@ -40,4 +46,4 @@ def smooth_spikes(demod, max_value):
 
 def unwrap_hilbert(hilbert, freq_hz):
     # return hilbert_test.unwrap_hilbert(hilbert, freq_hz)
-    return vhsd_rust.unwrap_hilbert(hilbert, freq_hz)
+    return _unwrap_hilbert_impl(hilbert, freq_hz)
