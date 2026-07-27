@@ -1845,6 +1845,18 @@ class FieldNTSCShared(FieldShared, ldd.FieldNTSC):
 
             # move the hsync location relative to the color burst center position
             burst_center_distance = burst.center - line_start
+
+            # A line of zero length, or a burst sitting exactly on the line
+            # start, carries no timing to lock to - and dividing by it raises
+            # ZeroDivisionError out of Field.process(), which aborts the whole
+            # decode and saves whatever had been written so far.  One degenerate
+            # field on a noisy tape should cost that field, not the rest of the
+            # capture.  (Both divisions cancel: scale is line_length / outlinelen.
+            # The expression is left as it is so the numbers do not shift where
+            # this already worked.)
+            if line_length == 0 or burst_center_distance == 0:
+                continue
+
             scale = burst_center_distance / (outlinelen * (burst_center_distance / line_length))
 
             line_adjust = (phase_delta / 360.0) * fsc_ratio
