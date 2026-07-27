@@ -309,3 +309,5 @@ estanca.
 
 All the hard work is [oyvindln/vhs-decode](https://github.com/oyvindln/vhs-decode)
 and its contributors. This fork only makes it finish sooner.
+
+**by ElMamadoJoe**
