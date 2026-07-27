@@ -27,31 +27,6 @@ way — the original documentation is kept as
 | Level check in one pass instead of two array scans | small | identical |
 | TBC resampling spread across cores | varies | identical |
 
-### Things that were broken
-
-**Seeking inside a `.ldf` did not work.** These files carry no seek table, so
-ffmpeg estimates byte positions from the bitrate. On a 2h45m capture that
-estimate was **25x short**. The decoder still returned correct samples — it
-decodes forward and discards everything before the target — but every seek was a
-linear scan from the start of the file. Invisible on a small capture, fatal on a
-large one: one job of a parallel decode would have spent 66 minutes walking to
-its own starting point.
-
-`lddecode/flacseek.py` positions by FLAC frame header instead. Every seek on the
-240 GB test capture now lands within one block of the target in 0.00–0.02 s.
-
-**A long `.ldf` lies about its own length.** The same capture reported
-**272,629,760 samples (6.8 s)** against a true **395,437,800,000 (164.8 min)** —
-out by a factor of ~1450, because a capture past 2³⁶ samples cannot be described
-in a FLAC header at all. Trusting it decoded **0.07 % of the tape and reported
-success**, which is the worst kind of failure. The length is now cross-checked
-against the file size and against the capture tool's `.json` sidecar, and the
-tools refuse rather than guess.
-
-**A source checkout without a Rust toolchain could not run at all** —
-`vhsd_rust` was imported unconditionally. There is now a numpy/numba fallback.
-`vhsd_rust` is still preferred when present; it is worth about +70 % on its own.
-
 ## New tools
 
 ### `decode_parallel.py` — several processes on one machine
@@ -162,33 +137,6 @@ funcionando igual — su documentación se conserva en
 | `scipy.fft` en vez de `numpy.fft` | ~23 % menos tiempo en las FFT | idéntica |
 | Comprobación de niveles en una pasada en vez de dos | pequeña | idéntica |
 | Remuestreo del TBC repartido entre núcleos | variable | idéntica |
-
-### Cosas que estaban rotas
-
-**La búsqueda dentro de un `.ldf` no funcionaba.** Estos ficheros no llevan tabla
-de seek, así que ffmpeg estima las posiciones de byte a partir del bitrate. En
-una captura de 2 h 45 esa estimación se quedaba **25 veces corta**. El
-decodificador devolvía muestras correctas igualmente — decodifica hacia delante y
-descarta todo lo anterior — pero cada búsqueda era un escaneo lineal desde el
-principio del fichero. Invisible en una captura pequeña, fatal en una grande: un
-trabajo de un decode paralelo habría tardado 66 minutos solo en llegar a su punto
-de partida.
-
-`lddecode/flacseek.py` posiciona por cabecera de frame FLAC. Ahora cada búsqueda
-en la captura de prueba de 240 GB aterriza dentro de un bloque del objetivo en
-0,00–0,02 s.
-
-**Un `.ldf` largo miente sobre su propia duración.** Esa misma captura declaraba
-**272.629.760 muestras (6,8 s)** frente a las **395.437.800.000 reales
-(164,8 min)** — un factor de ~1450, porque una captura de más de 2³⁶ muestras no
-se puede describir en una cabecera FLAC. Fiarse de ese dato decodificaba **el
-0,07 % de la cinta e informaba de éxito**, que es el peor tipo de fallo posible.
-Ahora la duración se contrasta con el tamaño del fichero y con el sidecar `.json`
-de la herramienta de captura, y las herramientas se niegan antes que adivinar.
-
-**Un checkout del código fuente sin toolchain de Rust no arrancaba siquiera** —
-`vhsd_rust` se importaba sin condiciones. Ahora hay un fallback en numpy/numba.
-Se sigue prefiriendo `vhsd_rust` cuando está: vale un +70 % él solo.
 
 ## Herramientas nuevas
 
